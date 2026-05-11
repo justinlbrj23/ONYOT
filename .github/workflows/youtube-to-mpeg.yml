@@ -45,10 +45,10 @@ jobs:
       - name: Run converter (PAL-VCD MPEG-1, split into parts)
         shell: bash
         run: |
-          set -uo pipefail
+          set -euo pipefail
           mkdir -p output
 
-          # ~9 minutes per part; adjust if needed (e.g., 480 for 8 min)
+          # ~9 minutes per part (adjust to 480 for 8 min if you still exceed 100MiB)
           SEGMENT_SECONDS=540
 
           while IFS= read -r url || [ -n "$url" ]; do
@@ -61,16 +61,18 @@ jobs:
             tmpdir="$(mktemp -d)"
             outtmpl="$tmpdir/%(id)s.%(ext)s"
 
-            # Build cookie args only if cookies.txt exists
-            cookie_args=()
+            # If cookies exist, use them; otherwise run as guest
+            COOKIES_OPT=""
             if [ -f cookies.txt ]; then
-              cookie_args=(--cookies cookies.txt)
+              COOKIES_OPT="--cookies cookies.txt"
             fi
 
-            # Download first (no pipe). Force IPv4 + retries/backoff for transient network issues
+            # yt-dlp download with stronger network resilience + force IPv4
+            # -4 / --force-ipv4 is supported by yt-dlp
+            # --socket-timeout / --retries / --fragment-retries / --retry-sleep are supported by yt-dlp
             if ! yt-dlp \
               --no-playlist \
-              "${cookie_args[@]}" \
+              $COOKIES_OPT \
               --js-runtimes deno \
               --remote-components ejs:github \
               -4 \
@@ -113,4 +115,3 @@ jobs:
           name: vcd-mpg-videos
           path: output/*.mpg
           if-no-files-found: warn
-``
