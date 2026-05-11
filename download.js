@@ -25,9 +25,8 @@ urls.forEach((url, index) => {
   console.log(`\nDownloading: ${url}`);
 
   try {
-    // Prefer H.264 + AAC in MP4 for compatibility
     execSync(
-      `yt-dlp --no-playlist --js-runtimes deno --remote-components ejs:gh ` +
+      `yt-dlp --no-playlist --js-runtimes deno --remote-components ejs:github ` +
         `-f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" ` +
         `-o "${tempFile}" "${url}"`,
       { stdio: "inherit" }
