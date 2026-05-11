@@ -14,7 +14,6 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # Deno is the recommended JS runtime for solving YouTube JS challenges
       - name: Setup Deno (JS runtime for yt-dlp)
         uses: denoland/setup-deno@v1
         with:
@@ -32,7 +31,7 @@ jobs:
           deno --version
           ffmpeg -version
 
-      - name: Setup cookies (from secret)
+      - name: Setup cookies (from secret, optional)
         shell: bash
         run: |
           if [ -n "${{ secrets.YT_COOKIES }}" ]; then
@@ -40,7 +39,7 @@ jobs:
             echo "cookies.txt written from secret"
           else
             echo "YT_COOKIES secret not set; continuing without cookies"
-            : > cookies.txt
+            rm -f cookies.txt
           fi
 
       - name: Run converter (PAL-VCD MPEG-1, split into parts)
@@ -49,8 +48,7 @@ jobs:
           set -uo pipefail
           mkdir -p output
 
-          # ~9 minutes per part keeps VCD-ish files commonly under 100 MiB
-          # VCD is ~10MB/min rule-of-thumb, so 9 min ~90MB
+          # ~9 minutes per part; adjust if needed (e.g., 480 for 8 min)
           SEGMENT_SECONDS=540
 
           while IFS= read -r url || [ -n "$url" ]; do
@@ -63,12 +61,24 @@ jobs:
             tmpdir="$(mktemp -d)"
             outtmpl="$tmpdir/%(id)s.%(ext)s"
 
-            # Download first (no pipe). Use Deno + EJS remote components
+            # Build cookie args only if cookies.txt exists
+            cookie_args=()
+            if [ -f cookies.txt ]; then
+              cookie_args=(--cookies cookies.txt)
+            fi
+
+            # Download first (no pipe). Force IPv4 + retries/backoff for transient network issues
             if ! yt-dlp \
               --no-playlist \
-              --cookies cookies.txt \
+              "${cookie_args[@]}" \
               --js-runtimes deno \
               --remote-components ejs:github \
+              -4 \
+              --socket-timeout 30 \
+              --retries infinite \
+              --fragment-retries infinite \
+              --retry-sleep exp=1:60 \
+              -N 1 \
               -f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" \
               -o "$outtmpl" \
               "$url"; then
@@ -103,3 +113,4 @@ jobs:
           name: vcd-mpg-videos
           path: output/*.mpg
           if-no-files-found: warn
+``
