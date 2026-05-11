@@ -42,14 +42,11 @@ jobs:
             rm -f cookies.txt
           fi
 
-      - name: Run converter (PAL-VCD MPEG-1, split into parts)
+      - name: Run converter (PAL-VCD MPEG-1, single file)
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p output
-
-          # ~9 minutes per part (adjust to 480 for 8 min if you still exceed 100MiB)
-          SEGMENT_SECONDS=540
 
           while IFS= read -r url || [ -n "$url" ]; do
             url="$(echo "$url" | sed 's/\r$//')"
@@ -61,48 +58,59 @@ jobs:
             tmpdir="$(mktemp -d)"
             outtmpl="$tmpdir/%(id)s.%(ext)s"
 
-            # If cookies exist, use them; otherwise run as guest
-            COOKIES_OPT=""
+            # Download first (no pipe). Force IPv4 + retries/backoff for transient network issues
+            # Supported by yt-dlp: -4/--force-ipv4, --socket-timeout, --retries, --fragment-retries, --retry-sleep,
+            # --js-runtimes, --remote-components ejs:github [1](https://github.com/yt-dlp/yt-dlp/issues/14404)
             if [ -f cookies.txt ]; then
-              COOKIES_OPT="--cookies cookies.txt"
+              yt_dlp_cmd=(yt-dlp
+                --no-playlist
+                --cookies cookies.txt
+                --js-runtimes deno
+                --remote-components ejs:github
+                -4
+                --socket-timeout 30
+                --retries infinite
+                --fragment-retries infinite
+                --retry-sleep exp=1:60
+                -N 1
+                -f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b"
+                -o "$outtmpl"
+                "$url"
+              )
+            else
+              yt_dlp_cmd=(yt-dlp
+                --no-playlist
+                --js-runtimes deno
+                --remote-components ejs:github
+                -4
+                --socket-timeout 30
+                --retries infinite
+                --fragment-retries infinite
+                --retry-sleep exp=1:60
+                -N 1
+                -f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b"
+                -o "$outtmpl"
+                "$url"
+              )
             fi
 
-            # yt-dlp download with stronger network resilience + force IPv4
-            # -4 / --force-ipv4 is supported by yt-dlp
-            # --socket-timeout / --retries / --fragment-retries / --retry-sleep are supported by yt-dlp
-            if ! yt-dlp \
-              --no-playlist \
-              $COOKIES_OPT \
-              --js-runtimes deno \
-              --remote-components ejs:github \
-              -4 \
-              --socket-timeout 30 \
-              --retries infinite \
-              --fragment-retries infinite \
-              --retry-sleep exp=1:60 \
-              -N 1 \
-              -f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" \
-              -o "$outtmpl" \
-              "$url"; then
+            if ! "${yt_dlp_cmd[@]}"; then
               echo "❌ Download failed for: $url"
               rm -rf "$tmpdir"
               echo "Continuing to next URL..."
               continue
             fi
 
-            # Convert to PAL VCD MPEG-1 and split into parts
+            # Convert to PAL VCD MPEG-1 (single output per video)
+            # pal-vcd corresponds to PAL VCD target settings (352x288 @ 25fps, mpeg1video + mp2) [2](https://raw.githubusercontent.com/actions/upload-artifact/main/README.md)[3](https://github.com/ivanopcode/yt-dlp-best)
             shopt -s nullglob
             for f in "$tmpdir"/*; do
               [ -f "$f" ] || continue
               base="$(basename "$f")"
               id="${base%%.*}"
 
-              echo "Encoding PAL-VCD + splitting: $f -> output/${id}_part###.mpg"
-
-              ffmpeg -y -i "$f" \
-                -target pal-vcd \
-                -f segment -segment_time "$SEGMENT_SECONDS" -reset_timestamps 1 \
-                "output/${id}_part%03d.mpg" || true
+              echo "Encoding PAL-VCD: $f -> output/$id.mpg"
+              ffmpeg -y -i "$f" -target pal-vcd "output/$id.mpg" || true
             done
             shopt -u nullglob
 
