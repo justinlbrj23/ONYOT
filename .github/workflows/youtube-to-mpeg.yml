@@ -1,4 +1,4 @@
-name: Download YouTube to MPEG
+name: YouTube to MPEG (Stable)
 
 on:
   push:
@@ -12,28 +12,37 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install FFmpeg
+      - name: Install tools
         run: |
           sudo apt update
           sudo apt install ffmpeg -y
-
-      - name: Install yt-dlp
-        run: |
           python3 -m pip install -U yt-dlp
 
-      - name: Run downloader
-        run: node download.js
+      - name: Run converter
+        run: |
+          mkdir -p output
 
-      - name: Upload MPEG files
+          while read url; do
+            echo "Processing $url"
+
+            yt-dlp \
+              --cookies cookies.txt \
+              -f "bv*+ba/b" \
+              -o - "$url" | \
+            ffmpeg -i - \
+              -c:v mpeg2video \
+              -qscale:v 2 \
+              -c:a mp2 \
+              -b:a 192k \
+              "output/%(id)s.mpeg"
+
+          done < urls.txt
+
+      - name: Upload results
         uses: actions/upload-artifact@v4
         with:
-          name: mpeg-files
+          name: mpeg-videos
           path: output/*.mpeg
