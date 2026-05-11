@@ -42,80 +42,65 @@ jobs:
             rm -f cookies.txt
           fi
 
-      - name: Run converter (PAL-VCD MPEG-1, single file)
+      - name: Download ALL URLs (batch)
         shell: bash
         run: |
-          set -euo pipefail
+          set -u
+          mkdir -p downloads output
+
+          echo "===== urls.txt (numbered) ====="
+          nl -ba urls.txt || true
+          echo "==============================="
+
+          COOKIES_OPT=""
+          if [ -f cookies.txt ]; then
+            COOKIES_OPT="--cookies cookies.txt"
+          fi
+
+          # Download ALL URLs from urls.txt using yt-dlp batch mode (-a)
+          # -a/--batch-file is supported by yt-dlp [1](https://github.com/yt-dlp/yt-dlp/issues/14404)
+          # -4/--force-ipv4 is supported by yt-dlp [1](https://github.com/yt-dlp/yt-dlp/issues/14404)
+          # -i/--ignore-errors and --no-abort-on-error keep batch moving [1](https://github.com/yt-dlp/yt-dlp/issues/14404)
+          yt-dlp \
+            -a urls.txt \
+            --no-playlist \
+            --no-abort-on-error \
+            -i \
+            $COOKIES_OPT \
+            --js-runtimes deno \
+            --remote-components ejs:github \
+            -4 \
+            --socket-timeout 30 \
+            --retries 10 \
+            --fragment-retries 10 \
+            --retry-sleep exp=1:60 \
+            -N 1 \
+            -f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" \
+            -o "downloads/%(id)s.%(ext)s"
+
+          echo "===== Downloaded files ====="
+          ls -lh downloads || true
+
+      - name: Convert ALL downloads to PAL-VCD (single file per video)
+        shell: bash
+        run: |
+          set -u
           mkdir -p output
+          shopt -s nullglob
 
-          while IFS= read -r url || [ -n "$url" ]; do
-            url="$(echo "$url" | sed 's/\r$//')"
-            [ -z "$url" ] && continue
-            case "$url" in \#*) continue ;; esac
+          echo "===== Converting downloads -> output ====="
+          for f in downloads/*; do
+            [ -f "$f" ] || continue
+            base="$(basename "$f")"
+            id="${base%%.*}"
+            echo "Converting $f -> output/$id.mpg"
 
-            echo "Processing: $url"
+            # Single PAL VCD MPEG-1 output per file
+            ffmpeg -y -i "$f" -target pal-vcd "output/$id.mpg" || true
+          done
 
-            tmpdir="$(mktemp -d)"
-            outtmpl="$tmpdir/%(id)s.%(ext)s"
-
-            # Download first (no pipe). Force IPv4 + retries/backoff for transient network issues
-            # Supported by yt-dlp: -4/--force-ipv4, --socket-timeout, --retries, --fragment-retries, --retry-sleep,
-            # --js-runtimes, --remote-components ejs:github [1](https://github.com/yt-dlp/yt-dlp/issues/14404)
-            if [ -f cookies.txt ]; then
-              yt_dlp_cmd=(yt-dlp
-                --no-playlist
-                --cookies cookies.txt
-                --js-runtimes deno
-                --remote-components ejs:github
-                -4
-                --socket-timeout 30
-                --retries infinite
-                --fragment-retries infinite
-                --retry-sleep exp=1:60
-                -N 1
-                -f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b"
-                -o "$outtmpl"
-                "$url"
-              )
-            else
-              yt_dlp_cmd=(yt-dlp
-                --no-playlist
-                --js-runtimes deno
-                --remote-components ejs:github
-                -4
-                --socket-timeout 30
-                --retries infinite
-                --fragment-retries infinite
-                --retry-sleep exp=1:60
-                -N 1
-                -f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b"
-                -o "$outtmpl"
-                "$url"
-              )
-            fi
-
-            if ! "${yt_dlp_cmd[@]}"; then
-              echo "❌ Download failed for: $url"
-              rm -rf "$tmpdir"
-              echo "Continuing to next URL..."
-              continue
-            fi
-
-            # Convert to PAL VCD MPEG-1 (single output per video)
-            # pal-vcd corresponds to PAL VCD target settings (352x288 @ 25fps, mpeg1video + mp2) [2](https://raw.githubusercontent.com/actions/upload-artifact/main/README.md)[3](https://github.com/ivanopcode/yt-dlp-best)
-            shopt -s nullglob
-            for f in "$tmpdir"/*; do
-              [ -f "$f" ] || continue
-              base="$(basename "$f")"
-              id="${base%%.*}"
-
-              echo "Encoding PAL-VCD: $f -> output/$id.mpg"
-              ffmpeg -y -i "$f" -target pal-vcd "output/$id.mpg" || true
-            done
-            shopt -u nullglob
-
-            rm -rf "$tmpdir"
-          done < urls.txt
+          echo "===== Output files ====="
+          ls -lh output || true
 
       - name: Upload results
         uses: actions/upload-artifact@v4
