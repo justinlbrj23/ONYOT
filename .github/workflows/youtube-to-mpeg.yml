@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
 
       # ✅ Deno is the recommended JS runtime for solving YouTube JS challenges
-      # (yt-dlp needs a supported JS runtime for full YouTube support)
+      # yt-dlp needs a supported JS runtime + EJS solver scripts for full YouTube formats
       - name: Setup Deno (JS runtime for yt-dlp)
         uses: denoland/setup-deno@v1
         with:
@@ -31,7 +31,7 @@ jobs:
           # to ensure required optional components are present for YouTube
           python3 -m pip install -U "yt-dlp[default]"
 
-          # ✅ Explicitly install yt-dlp-ejs (solver scripts) as extra safety
+          # ✅ EJS solver scripts (challenge solver bundle)
           python3 -m pip install -U yt-dlp-ejs
 
           yt-dlp --version
@@ -43,7 +43,8 @@ jobs:
         shell: bash
         run: |
           if [ -n "${{ secrets.YT_COOKIES }}" ]; then
-            echo "${{ secrets.YT_COOKIES }}" > cookies.txt
+            # printf is safer than echo for preserving formatting
+            printf '%s' "${{ secrets.YT_COOKIES }}" > cookies.txt
             echo "cookies.txt written from secret"
           else
             echo "YT_COOKIES secret not set; continuing without cookies"
@@ -56,36 +57,38 @@ jobs:
           set -uo pipefail
           mkdir -p output
 
-          # Read urls safely (handles spaces, avoids trimming issues)
           while IFS= read -r url || [ -n "$url" ]; do
-            # skip blanks / comments
             url="$(echo "$url" | sed 's/\r$//')"
             [ -z "$url" ] && continue
             case "$url" in \#*) continue ;; esac
 
             echo "Processing: $url"
 
-            # ✅ Download FIRST (no pipe), using EJS remote components + Deno runtime
-            # - --remote-components ejs:gh allows fetching solver scripts at runtime if needed
-            # - --js-runtimes deno uses Deno for the JS challenge solving
-            # - format string prioritizes mp4/h264 (avc1) + m4a/aac for compatibility
+            # Per-URL temp folder avoids converting leftovers
+            tmpdir="$(mktemp -d)"
+            outtmpl="$tmpdir/%(id)s.%(ext)s"
+
+            # ✅ Download FIRST (no pipe), using Deno runtime + EJS remote components
+            # ✅ Prefer MP4 (H.264/avc1) + M4A (AAC) when available for compatibility
             if ! yt-dlp \
               --no-playlist \
               --cookies cookies.txt \
               --js-runtimes deno \
               --remote-components ejs:gh \
               -f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" \
-              -o "temp.%(id)s.%(ext)s" \
+              -o "$outtmpl" \
               "$url"; then
               echo "❌ Download failed for: $url"
+              rm -rf "$tmpdir"
               echo "Continuing to next URL..."
               continue
             fi
 
-            # ✅ Convert any temp.* files produced by this run
             shopt -s nullglob
-            for f in temp.*.*; do
-              id="$(echo "$f" | cut -d'.' -f2)"
+            for f in "$tmpdir"/*; do
+              [ -f "$f" ] || continue
+              base="$(basename "$f")"
+              id="${base%%.*}"  # everything before first dot
               echo "Converting $f -> output/$id.mpeg"
 
               if ! ffmpeg -y -i "$f" \
@@ -95,11 +98,10 @@ jobs:
                 echo "❌ ffmpeg conversion failed for: $f"
                 continue
               fi
-
-              rm -f "$f"
             done
             shopt -u nullglob
 
+            rm -rf "$tmpdir"
           done < urls.txt
 
       - name: Upload results
