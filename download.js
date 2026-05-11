@@ -24,26 +24,27 @@ urls.forEach((url, index) => {
   const tempFile = `temp_${index}.mp4`;
   const outputFile = `video_${index}.mpeg`;
 
-  console.log(`Downloading: ${url}`);
+  console.log(`\nDownloading: ${url}`);
 
-  // Download best MP4
-  execSync(
-    `yt-dlp -f mp4 -o "${tempFile}" "${url}"`,
-    { stdio: "inherit" }
-  );
+  try {
+    // ✅ safer format
+    execSync(
+      `yt-dlp -f mp4 --no-playlist -o "${tempFile}" "${url}"`,
+      { stdio: "inherit" }
+    );
 
-  console.log(`Converting to MPEG...`);
+    console.log("Converting...");
 
-  // Convert to MPEG
-  execSync(
-    `ffmpeg -i "${tempFile}" "${outputDir}/${outputFile}"`,
-    { stdio: "inherit" }
-  );
+    execSync(
+      `ffmpeg -y -i "${tempFile}" -c:v mpeg2video -qscale:v 2 -c:a mp2 -b:a 192k "${outputDir}/${outputFile}"`,
+      { stdio: "inherit" }
+    );
 
-  // Cleanup
-  fs.unlinkSync(tempFile);
-
-  console.log(`Saved: ${outputFile}`);
+    fs.unlinkSync(tempFile);
+    console.log(`Saved: ${outputFile}`);
+  } catch (err) {
+    console.error(`Failed on ${url}`);
+  }
 });
 
-console.log("All done.");
+console.log("\nAll done.");
