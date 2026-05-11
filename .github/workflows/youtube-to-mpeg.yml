@@ -42,14 +42,16 @@ jobs:
             rm -f cookies.txt
           fi
 
-      - name: Download ALL URLs (batch)
+      - name: Download ALL URLs from urls.txt (batch)
         shell: bash
         run: |
-          set -u
+          set -uo pipefail
           mkdir -p downloads output
 
           echo "===== urls.txt (numbered) ====="
           nl -ba urls.txt || true
+          echo "===== URL count ====="
+          wc -l urls.txt || true
           echo "==============================="
 
           COOKIES_OPT=""
@@ -57,10 +59,11 @@ jobs:
             COOKIES_OPT="--cookies cookies.txt"
           fi
 
-          # Download ALL URLs from urls.txt using yt-dlp batch mode (-a)
-          # -a/--batch-file is supported by yt-dlp [1](https://github.com/yt-dlp/yt-dlp/issues/14404)
-          # -4/--force-ipv4 is supported by yt-dlp [1](https://github.com/yt-dlp/yt-dlp/issues/14404)
-          # -i/--ignore-errors and --no-abort-on-error keep batch moving [1](https://github.com/yt-dlp/yt-dlp/issues/14404)
+          # Batch file mode: -a/--batch-file reads one URL per line from urls.txt
+          # Continue on failures: -i/--ignore-errors and --no-abort-on-error
+          # Force IPv4: -4/--force-ipv4
+          # Enable Deno + EJS remote components: --js-runtimes deno and --remote-components ejs:github
+          # Retry options are supported by yt-dlp as well
           yt-dlp \
             -a urls.txt \
             --no-playlist \
@@ -84,7 +87,7 @@ jobs:
       - name: Convert ALL downloads to PAL-VCD (single file per video)
         shell: bash
         run: |
-          set -u
+          set -uo pipefail
           mkdir -p output
           shopt -s nullglob
 
@@ -93,9 +96,10 @@ jobs:
             [ -f "$f" ] || continue
             base="$(basename "$f")"
             id="${base%%.*}"
+
             echo "Converting $f -> output/$id.mpg"
 
-            # Single PAL VCD MPEG-1 output per file
+            # -target pal-vcd produces PAL VCD MPEG-1 output (single file)
             ffmpeg -y -i "$f" -target pal-vcd "output/$id.mpg" || true
           done
 
@@ -108,3 +112,4 @@ jobs:
           name: vcd-mpg-videos
           path: output/*.mpg
           if-no-files-found: warn
+``
