@@ -28,8 +28,8 @@ urls.forEach((url, index) => {
     // Prefer H.264 + AAC in MP4 for compatibility
     execSync(
       `yt-dlp --no-playlist --js-runtimes deno --remote-components ejs:gh ` +
-      `-f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" ` +
-      `-o "${tempFile}" "${url}"`,
+        `-f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" ` +
+        `-o "${tempFile}" "${url}"`,
       { stdio: "inherit" }
     );
 
@@ -37,8 +37,8 @@ urls.forEach((url, index) => {
 
     execSync(
       `ffmpeg -y -i "${tempFile}" ` +
-      `-c:v mpeg2video -qscale:v 2 -c:a mp2 -b:a 192k ` +
-      `"${path.join(outputDir, outputFile)}"`,
+        `-c:v mpeg2video -qscale:v 2 -c:a mp2 -b:a 192k ` +
+        `"${path.join(outputDir, outputFile)}"`,
       { stdio: "inherit" }
     );
 
@@ -50,4 +50,3 @@ urls.forEach((url, index) => {
 });
 
 console.log("\nAll done.");
-``
