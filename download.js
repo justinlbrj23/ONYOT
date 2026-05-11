@@ -5,15 +5,13 @@ const { execSync } = require("child_process");
 const urlsFile = "urls.txt";
 const outputDir = path.join(__dirname, "output");
 
-if (!fs.existsSync(outputDir)) {
-  fs.mkdirSync(outputDir);
-}
+if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
 
 const urls = fs
   .readFileSync(urlsFile, "utf8")
   .split("\n")
-  .map(x => x.trim())
-  .filter(Boolean);
+  .map((x) => x.replace(/\r$/, "").trim())
+  .filter((x) => x && !x.startsWith("#"));
 
 if (urls.length === 0) {
   console.log("No URLs found.");
@@ -27,24 +25,29 @@ urls.forEach((url, index) => {
   console.log(`\nDownloading: ${url}`);
 
   try {
-    // ✅ safer format
+    // Prefer H.264 + AAC in MP4 for compatibility
     execSync(
-      `yt-dlp -f mp4 --no-playlist -o "${tempFile}" "${url}"`,
+      `yt-dlp --no-playlist --js-runtimes deno --remote-components ejs:gh ` +
+      `-f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" ` +
+      `-o "${tempFile}" "${url}"`,
       { stdio: "inherit" }
     );
 
-    console.log("Converting...");
+    console.log("Converting to MPEG...");
 
     execSync(
-      `ffmpeg -y -i "${tempFile}" -c:v mpeg2video -qscale:v 2 -c:a mp2 -b:a 192k "${outputDir}/${outputFile}"`,
+      `ffmpeg -y -i "${tempFile}" ` +
+      `-c:v mpeg2video -qscale:v 2 -c:a mp2 -b:a 192k ` +
+      `"${path.join(outputDir, outputFile)}"`,
       { stdio: "inherit" }
     );
 
     fs.unlinkSync(tempFile);
     console.log(`Saved: ${outputFile}`);
   } catch (err) {
-    console.error(`Failed on ${url}`);
+    console.error(`Failed on URL: ${url}`);
   }
 });
 
 console.log("\nAll done.");
+``
