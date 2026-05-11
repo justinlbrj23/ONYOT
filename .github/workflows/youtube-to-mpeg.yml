@@ -14,8 +14,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # ✅ Deno is the recommended JS runtime for solving YouTube JS challenges
-      # yt-dlp needs a supported JS runtime + EJS solver scripts for full YouTube formats
+      # Deno is the recommended JS runtime for solving YouTube JS challenges
       - name: Setup Deno (JS runtime for yt-dlp)
         uses: denoland/setup-deno@v1
         with:
@@ -26,24 +25,17 @@ jobs:
           sudo apt update
           sudo apt install -y ffmpeg
           python3 -m pip install -U pip
-
-          # ✅ For pip installs, yt-dlp recommends installing with [default] extras
-          # to ensure required optional components are present for YouTube
           python3 -m pip install -U "yt-dlp[default]"
-
-          # ✅ EJS solver scripts (challenge solver bundle)
           python3 -m pip install -U yt-dlp-ejs
 
           yt-dlp --version
           deno --version
           ffmpeg -version
 
-      # ✅ Store cookies securely in a GitHub Secret named YT_COOKIES
       - name: Setup cookies (from secret)
         shell: bash
         run: |
           if [ -n "${{ secrets.YT_COOKIES }}" ]; then
-            # printf is safer than echo for preserving formatting
             printf '%s' "${{ secrets.YT_COOKIES }}" > cookies.txt
             echo "cookies.txt written from secret"
           else
@@ -64,17 +56,15 @@ jobs:
 
             echo "Processing: $url"
 
-            # Per-URL temp folder avoids converting leftovers
             tmpdir="$(mktemp -d)"
             outtmpl="$tmpdir/%(id)s.%(ext)s"
 
-            # ✅ Download FIRST (no pipe), using Deno runtime + EJS remote components
-            # ✅ Prefer MP4 (H.264/avc1) + M4A (AAC) when available for compatibility
+            # Download first (no pipe). Use Deno + EJS remote components (supported source)
             if ! yt-dlp \
               --no-playlist \
               --cookies cookies.txt \
               --js-runtimes deno \
-              --remote-components ejs:gh \
+              --remote-components ejs:github \
               -f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" \
               -o "$outtmpl" \
               "$url"; then
@@ -88,16 +78,13 @@ jobs:
             for f in "$tmpdir"/*; do
               [ -f "$f" ] || continue
               base="$(basename "$f")"
-              id="${base%%.*}"  # everything before first dot
+              id="${base%%.*}"
               echo "Converting $f -> output/$id.mpeg"
 
-              if ! ffmpeg -y -i "$f" \
+              ffmpeg -y -i "$f" \
                 -c:v mpeg2video -qscale:v 2 \
                 -c:a mp2 -b:a 192k \
-                "output/$id.mpeg"; then
-                echo "❌ ffmpeg conversion failed for: $f"
-                continue
-              fi
+                "output/$id.mpeg" || true
             done
             shopt -u nullglob
 
