@@ -3,7 +3,7 @@ name: YouTube to MPEG (Stable)
 on:
   push:
     paths:
-      - 'urls.txt'
+      - "urls.txt"
   workflow_dispatch:
 
 jobs:
@@ -14,49 +14,91 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # ✅ Deno is the recommended JS runtime for solving YouTube JS challenges
+      # (yt-dlp needs a supported JS runtime for full YouTube support)
+      - name: Setup Deno (JS runtime for yt-dlp)
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: "v2.x"
+
       - name: Install tools
         run: |
           sudo apt update
-          sudo apt install ffmpeg nodejs -y
+          sudo apt install -y ffmpeg
           python3 -m pip install -U pip
-          python3 -m pip install -U yt-dlp
 
-      # ✅ Write cookies from GitHub secret (IMPORTANT)
-      - name: Setup cookies
-        run: echo "${{ secrets.YT_COOKIES }}" > cookies.txt
+          # ✅ For pip installs, yt-dlp recommends installing with [default] extras
+          # to ensure required optional components are present for YouTube
+          python3 -m pip install -U "yt-dlp[default]"
+
+          # ✅ Explicitly install yt-dlp-ejs (solver scripts) as extra safety
+          python3 -m pip install -U yt-dlp-ejs
+
+          yt-dlp --version
+          deno --version
+          ffmpeg -version
+
+      # ✅ Store cookies securely in a GitHub Secret named YT_COOKIES
+      - name: Setup cookies (from secret)
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.YT_COOKIES }}" ]; then
+            echo "${{ secrets.YT_COOKIES }}" > cookies.txt
+            echo "cookies.txt written from secret"
+          else
+            echo "YT_COOKIES secret not set; continuing without cookies"
+            : > cookies.txt
+          fi
 
       - name: Run converter
+        shell: bash
         run: |
+          set -uo pipefail
           mkdir -p output
 
-          while read url; do
+          # Read urls safely (handles spaces, avoids trimming issues)
+          while IFS= read -r url || [ -n "$url" ]; do
+            # skip blanks / comments
+            url="$(echo "$url" | sed 's/\r$//')"
             [ -z "$url" ] && continue
-            echo "Processing $url"
+            case "$url" in \#*) continue ;; esac
 
-            # ✅ Download safely (NO PIPE)
-            yt-dlp \
-              --cookies cookies.txt \
-              -f "mp4" \
+            echo "Processing: $url"
+
+            # ✅ Download FIRST (no pipe), using EJS remote components + Deno runtime
+            # - --remote-components ejs:gh allows fetching solver scripts at runtime if needed
+            # - --js-runtimes deno uses Deno for the JS challenge solving
+            # - format string prioritizes mp4/h264 (avc1) + m4a/aac for compatibility
+            if ! yt-dlp \
               --no-playlist \
-              -o "temp.%(id)s.%(ext)s" "$url"
+              --cookies cookies.txt \
+              --js-runtimes deno \
+              --remote-components ejs:gh \
+              -f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" \
+              -o "temp.%(id)s.%(ext)s" \
+              "$url"; then
+              echo "❌ Download failed for: $url"
+              echo "Continuing to next URL..."
+              continue
+            fi
 
-            # ✅ Convert to MPEG
+            # ✅ Convert any temp.* files produced by this run
+            shopt -s nullglob
             for f in temp.*.*; do
-              [ -e "$f" ] || continue
+              id="$(echo "$f" | cut -d'.' -f2)"
+              echo "Converting $f -> output/$id.mpeg"
 
-              id=$(echo "$f" | cut -d'.' -f2)
+              if ! ffmpeg -y -i "$f" \
+                -c:v mpeg2video -qscale:v 2 \
+                -c:a mp2 -b:a 192k \
+                "output/$id.mpeg"; then
+                echo "❌ ffmpeg conversion failed for: $f"
+                continue
+              fi
 
-              echo "Converting $f -> $id.mpeg"
-
-              ffmpeg -y -i "$f" \
-                -c:v mpeg2video \
-                -qscale:v 2 \
-                -c:a mp2 \
-                -b:a 192k \
-                "output/$id.mpeg"
-
-              rm "$f"
+              rm -f "$f"
             done
+            shopt -u nullglob
 
           done < urls.txt
 
@@ -65,3 +107,4 @@ jobs:
         with:
           name: mpeg-videos
           path: output/*.mpeg
+          if-no-files-found: warn
