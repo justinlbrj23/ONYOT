@@ -4,7 +4,6 @@ on:
   push:
     paths:
       - 'urls.txt'
-
   workflow_dispatch:
 
 jobs:
@@ -18,26 +17,46 @@ jobs:
       - name: Install tools
         run: |
           sudo apt update
-          sudo apt install ffmpeg -y
+          sudo apt install ffmpeg nodejs -y
+          python3 -m pip install -U pip
           python3 -m pip install -U yt-dlp
+
+      # ✅ Write cookies from GitHub secret (IMPORTANT)
+      - name: Setup cookies
+        run: echo "${{ secrets.YT_COOKIES }}" > cookies.txt
 
       - name: Run converter
         run: |
           mkdir -p output
 
           while read url; do
+            [ -z "$url" ] && continue
             echo "Processing $url"
 
+            # ✅ Download safely (NO PIPE)
             yt-dlp \
               --cookies cookies.txt \
-              -f "bv*+ba/b" \
-              -o - "$url" | \
-            ffmpeg -i - \
-              -c:v mpeg2video \
-              -qscale:v 2 \
-              -c:a mp2 \
-              -b:a 192k \
-              "output/%(id)s.mpeg"
+              -f "mp4" \
+              --no-playlist \
+              -o "temp.%(id)s.%(ext)s" "$url"
+
+            # ✅ Convert to MPEG
+            for f in temp.*.*; do
+              [ -e "$f" ] || continue
+
+              id=$(echo "$f" | cut -d'.' -f2)
+
+              echo "Converting $f -> $id.mpeg"
+
+              ffmpeg -y -i "$f" \
+                -c:v mpeg2video \
+                -qscale:v 2 \
+                -c:a mp2 \
+                -b:a 192k \
+                "output/$id.mpeg"
+
+              rm "$f"
+            done
 
           done < urls.txt
 
