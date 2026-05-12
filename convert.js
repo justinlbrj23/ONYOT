@@ -5,17 +5,21 @@ const { execSync } = require("child_process");
 const inputDir = path.join(__dirname, "input");
 const outputDir = path.join(__dirname, "output");
 
-if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
+if (!fs.existsSync(outputDir)) {
+  fs.mkdirSync(outputDir);
+}
 
 if (!fs.existsSync(inputDir)) {
   console.log("Input folder missing:", inputDir);
   process.exit(0);
 }
 
-const files = fs.readdirSync(inputDir).filter((file) => file.endsWith(".mp4"));
+const files = fs
+  .readdirSync(inputDir)
+  .filter((file) => /\.(mp4|mkv|avi|mov)$/i.test(file));
 
 if (files.length === 0) {
-  console.log("No MP4 files found.");
+  console.log("No video files found.");
   process.exit(0);
 }
 
@@ -26,13 +30,21 @@ files.forEach((file) => {
 
   console.log(`Converting ${file} -> ${outputFile}`);
 
-  execSync(
+  const cmd =
     `ffmpeg -y -i "${inputPath}" ` +
-      `-c:v mpeg2video -qscale:v 2 -c:a mp2 -b:a 192k ` +
-      `"${outputPath}"`,
-    { stdio: "inherit" }
-  );
+    `-c:v mpeg2video ` +
+    `-qscale:v 2 ` +
+    `-pix_fmt yuv420p ` +
+    `-c:a mp2 ` +
+    `-ar 44100 ` +
+    `-ac 2 ` +
+    `-b:a 224k ` +
+    `-f mpeg ` +
+    `"${outputPath}"`;
+
+  console.log(cmd);
+
+  execSync(cmd, { stdio: "inherit" });
 });
 
 console.log("Conversion completed.");
-``
