@@ -7,6 +7,8 @@ jobs:
   convert:
     runs-on: ubuntu-latest
 
+    timeout-minutes: 360
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,7 +18,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup Python (for yt-dlp)
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -31,23 +33,29 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -U yt-dlp
 
-      # If you don't have package.json, create one automatically
       - name: Ensure npm project
         run: |
           if [ ! -f package.json ]; then
             npm init -y
           fi
 
-      # IMPORTANT: Pin webtorrent to v1 so require() works in download.js
       - name: Install dependencies
         run: |
           npm install --no-fund --no-audit webtorrent@1
 
-      - name: Create output directory
-        run: mkdir -p output
+      - name: Create directories
+        run: |
+          mkdir -p output
+          mkdir -p input
+
+      - name: Show FFmpeg version
+        run: ffmpeg -version
 
       - name: Run downloader
         run: node download.js
+
+      - name: List output files
+        run: ls -lah output
 
       - name: Upload MPEG files
         uses: actions/upload-artifact@v4
