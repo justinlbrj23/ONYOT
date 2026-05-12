@@ -26,13 +26,21 @@ if (urls.length === 0) {
 function convertToMpeg(inputPath, outputPath) {
   console.log("Converting to MPEG...");
 
-  execSync(
+  const cmd =
     `ffmpeg -y -i "${inputPath}" ` +
-      `-c:v mpeg2video -qscale:v 2 ` +
-      `-c:a mp2 -b:a 192k ` +
-      `"${outputPath}"`,
-    { stdio: "inherit" }
-  );
+    `-c:v mpeg2video ` +
+    `-qscale:v 2 ` +
+    `-pix_fmt yuv420p ` +
+    `-c:a mp2 ` +
+    `-ar 44100 ` +
+    `-ac 2 ` +
+    `-b:a 224k ` +
+    `-f mpeg ` +
+    `"${outputPath}"`;
+
+  console.log(cmd);
+
+  execSync(cmd, { stdio: "inherit" });
 
   console.log(`Saved: ${path.basename(outputPath)}`);
 }
@@ -44,7 +52,7 @@ async function handleYouTube(url, index) {
   console.log(`\nDownloading YouTube: ${url}`);
 
   execSync(
-    `yt-dlp --no-playlist --js-runtimes deno --remote-components ejs:github ` +
+    `yt-dlp --no-playlist ` +
       `-f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" ` +
       `-o "${tempFile}" "${url}"`,
     { stdio: "inherit" }
@@ -76,24 +84,30 @@ async function handleTorrent(magnet, index) {
 
       console.log(`Found video: ${videoFile.name}`);
 
-      videoFile.getBuffer((err, buffer) => {
-        if (err) {
+      const readStream = videoFile.createReadStream();
+      const writeStream = fs.createWriteStream(tempPath);
+
+      readStream.pipe(writeStream);
+
+      writeStream.on("finish", () => {
+        try {
+          const outputPath = path.join(
+            outputDir,
+            `torrent_${index}.mpeg`
+          );
+
+          convertToMpeg(tempPath, outputPath);
+
+          fs.unlinkSync(tempPath);
+
+          resolve();
+        } catch (err) {
           reject(err);
-          return;
         }
+      });
 
-        fs.writeFileSync(tempPath, buffer);
-
-        const outputPath = path.join(
-          outputDir,
-          `torrent_${index}.mpeg`
-        );
-
-        convertToMpeg(tempPath, outputPath);
-
-        fs.unlinkSync(tempPath);
-
-        resolve();
+      writeStream.on("error", (err) => {
+        reject(err);
       });
     });
   });
