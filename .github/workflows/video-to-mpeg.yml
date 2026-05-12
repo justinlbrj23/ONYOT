@@ -1,0 +1,42 @@
+name: Video to MPEG
+
+on:
+  workflow_dispatch:
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt update
+          sudo apt install ffmpeg -y
+
+      - name: Install yt-dlp
+        run: |
+          python3 -m pip install -U yt-dlp
+
+      - name: Install dependencies
+        run: |
+          npm install webtorrent
+
+      - name: Create output directory
+        run: mkdir -p output
+
+      - name: Run downloader
+        run: node download.js
+
+      - name: Upload MPEG files
+        uses: actions/upload-artifact@v4
+        with:
+          name: mpeg-output
+          path: output/*.mpeg
