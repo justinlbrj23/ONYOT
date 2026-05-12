@@ -15,19 +15,27 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+
+      - name: Setup Python (for yt-dlp)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Install FFmpeg
         run: |
-          sudo apt update
-          sudo apt install ffmpeg -y
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
 
       - name: Install yt-dlp
         run: |
-          python3 -m pip install -U yt-dlp
+          python -m pip install --upgrade pip
+          python -m pip install -U yt-dlp
 
+      # IMPORTANT: Pin WebTorrent to a CommonJS-compatible version
       - name: Install dependencies
         run: |
-          npm install webtorrent
+          npm install webtorrent@1
 
       - name: Create output directory
         run: mkdir -p output
@@ -40,3 +48,4 @@ jobs:
         with:
           name: mpeg-output
           path: output/*.mpeg
+          if-no-files-found: warn
