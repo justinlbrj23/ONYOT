@@ -1,11 +1,16 @@
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
+const WebTorrent = require("webtorrent");
+
+const client = new WebTorrent();
 
 const urlsFile = "urls.txt";
 const outputDir = path.join(__dirname, "output");
 
-if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
+if (!fs.existsSync(outputDir)) {
+  fs.mkdirSync(outputDir);
+}
 
 const urls = fs
   .readFileSync(urlsFile, "utf8")
@@ -18,34 +23,97 @@ if (urls.length === 0) {
   process.exit(0);
 }
 
-urls.forEach((url, index) => {
+function convertToMpeg(inputPath, outputPath) {
+  console.log("Converting to MPEG...");
+
+  execSync(
+    `ffmpeg -y -i "${inputPath}" ` +
+      `-c:v mpeg2video -qscale:v 2 ` +
+      `-c:a mp2 -b:a 192k ` +
+      `"${outputPath}"`,
+    { stdio: "inherit" }
+  );
+
+  console.log(`Saved: ${path.basename(outputPath)}`);
+}
+
+async function handleYouTube(url, index) {
   const tempFile = `temp_${index}.mp4`;
   const outputFile = `video_${index}.mpeg`;
 
-  console.log(`\nDownloading: ${url}`);
+  console.log(`\nDownloading YouTube: ${url}`);
 
-  try {
-    execSync(
-      `yt-dlp --no-playlist --js-runtimes deno --remote-components ejs:github ` +
-        `-f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" ` +
-        `-o "${tempFile}" "${url}"`,
-      { stdio: "inherit" }
-    );
+  execSync(
+    `yt-dlp --no-playlist --js-runtimes deno --remote-components ejs:github ` +
+      `-f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/b" ` +
+      `-o "${tempFile}" "${url}"`,
+    { stdio: "inherit" }
+  );
 
-    console.log("Converting to MPEG...");
+  convertToMpeg(
+    tempFile,
+    path.join(outputDir, outputFile)
+  );
 
-    execSync(
-      `ffmpeg -y -i "${tempFile}" ` +
-        `-c:v mpeg2video -qscale:v 2 -c:a mp2 -b:a 192k ` +
-        `"${path.join(outputDir, outputFile)}"`,
-      { stdio: "inherit" }
-    );
+  fs.unlinkSync(tempFile);
+}
 
-    fs.unlinkSync(tempFile);
-    console.log(`Saved: ${outputFile}`);
-  } catch (err) {
-    console.error(`Failed on URL: ${url}`);
+async function handleTorrent(magnet, index) {
+  return new Promise((resolve, reject) => {
+    console.log(`\nDownloading Torrent: ${magnet}`);
+
+    client.add(magnet, (torrent) => {
+      const videoFile = torrent.files.find((file) =>
+        /\.(mp4|mkv|avi|mov)$/i.test(file.name)
+      );
+
+      if (!videoFile) {
+        reject("No video file found in torrent.");
+        return;
+      }
+
+      const tempPath = path.join(__dirname, videoFile.name);
+
+      console.log(`Found video: ${videoFile.name}`);
+
+      videoFile.getBuffer((err, buffer) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        fs.writeFileSync(tempPath, buffer);
+
+        const outputPath = path.join(
+          outputDir,
+          `torrent_${index}.mpeg`
+        );
+
+        convertToMpeg(tempPath, outputPath);
+
+        fs.unlinkSync(tempPath);
+
+        resolve();
+      });
+    });
+  });
+}
+
+(async () => {
+  for (const [index, url] of urls.entries()) {
+    try {
+      if (url.startsWith("magnet:?")) {
+        await handleTorrent(url, index);
+      } else {
+        await handleYouTube(url, index);
+      }
+    } catch (err) {
+      console.error(`Failed: ${url}`);
+      console.error(err);
+    }
   }
-});
 
-console.log("\nAll done.");
+  client.destroy();
+
+  console.log("\nAll done.");
+})();
