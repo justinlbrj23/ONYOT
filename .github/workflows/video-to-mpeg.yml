@@ -6,7 +6,6 @@ on:
 jobs:
   convert:
     runs-on: ubuntu-latest
-
     timeout-minutes: 360
 
     steps:
@@ -23,38 +22,32 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install FFmpeg
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
 
-      - name: Install yt-dlp
-        run: |
+          sudo apt-get install -y \
+            ffmpeg \
+            aria2 \
+            mediainfo
+
           python -m pip install --upgrade pip
           python -m pip install -U yt-dlp
 
-      - name: Ensure npm project
+      - name: Install npm deps
         run: |
           if [ ! -f package.json ]; then
             npm init -y
           fi
 
-      - name: Install dependencies
+      - name: Create folders
         run: |
-          npm install --no-fund --no-audit webtorrent@1
-
-      - name: Create directories
-        run: |
-          mkdir -p output
-          mkdir -p input
-
-      - name: Show FFmpeg version
-        run: ffmpeg -version
+          mkdir -p input output
 
       - name: Run downloader
         run: node download.js
 
-      - name: List output files
+      - name: Show outputs
         run: ls -lah output
 
       - name: Upload MPEG files
