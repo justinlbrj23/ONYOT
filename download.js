@@ -29,14 +29,12 @@ function convertToMpeg(inputPath, outputPath) {
   const cmd =
     `ffmpeg -y -i "${inputPath}" ` +
     `-c:v mpeg2video ` +
-    `-b:v 1200k ` +
-    `-maxrate 1500k ` +
-    `-bufsize 3000k ` +
+    `-qscale:v 2 ` +
     `-pix_fmt yuv420p ` +
     `-c:a mp2 ` +
     `-ar 44100 ` +
     `-ac 2 ` +
-    `-b:a 128k ` +
+    `-b:a 224k ` +
     `-f mpeg ` +
     `"${outputPath}"`;
 
@@ -65,9 +63,7 @@ async function handleYouTube(url, index) {
     path.join(outputDir, outputFile)
   );
 
-  if (fs.existsSync(tempFile)) {
-    fs.unlinkSync(tempFile);
-  }
+  fs.unlinkSync(tempFile);
 }
 
 async function handleTorrent(magnet, index) {
@@ -84,9 +80,7 @@ async function handleTorrent(magnet, index) {
         return;
       }
 
-      const safeName = videoFile.name.replace(/[<>:"/\\|?*]+/g, "_");
-
-      const tempPath = path.join(__dirname, safeName);
+      const tempPath = path.join(__dirname, videoFile.name);
 
       console.log(`Found video: ${videoFile.name}`);
 
@@ -104,9 +98,7 @@ async function handleTorrent(magnet, index) {
 
           convertToMpeg(tempPath, outputPath);
 
-          if (fs.existsSync(tempPath)) {
-            fs.unlinkSync(tempPath);
-          }
+          fs.unlinkSync(tempPath);
 
           resolve();
         } catch (err) {
