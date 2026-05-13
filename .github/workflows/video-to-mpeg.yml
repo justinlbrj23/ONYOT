@@ -10,10 +10,10 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -54,15 +54,12 @@ jobs:
       - name: Run downloader
         run: node download.js
 
-      - name: Show generated files
-        run: |
-          echo "Generated MPEG files:"
-          ls -lah output
+      - name: List output files
+        run: ls -lah output
 
       - name: Upload MPEG files
         uses: actions/upload-artifact@v4
         with:
           name: mpeg-output
           path: output/*.mpeg
-          compression-level: 0
           if-no-files-found: warn
