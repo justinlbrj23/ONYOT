@@ -23,26 +23,6 @@ if (files.length === 0) {
   process.exit(0);
 }
 
-function convertToMpeg(inputPath, outputPath) {
-  const cmd =
-    `ffmpeg -y -i "${inputPath}" ` +
-    `-c:v mpeg2video ` +
-    `-b:v 1200k ` +
-    `-maxrate 1500k ` +
-    `-bufsize 3000k ` +
-    `-pix_fmt yuv420p ` +
-    `-c:a mp2 ` +
-    `-ar 44100 ` +
-    `-ac 2 ` +
-    `-b:a 128k ` +
-    `-f mpeg ` +
-    `"${outputPath}"`;
-
-  console.log(cmd);
-
-  execSync(cmd, { stdio: "inherit" });
-}
-
 files.forEach((file) => {
   const inputPath = path.join(inputDir, file);
   const outputFile = path.parse(file).name + ".mpeg";
@@ -50,7 +30,21 @@ files.forEach((file) => {
 
   console.log(`Converting ${file} -> ${outputFile}`);
 
-  convertToMpeg(inputPath, outputPath);
+  const cmd =
+    `ffmpeg -y -i "${inputPath}" ` +
+    `-c:v mpeg2video ` +
+    `-qscale:v 2 ` +
+    `-pix_fmt yuv420p ` +
+    `-c:a mp2 ` +
+    `-ar 44100 ` +
+    `-ac 2 ` +
+    `-b:a 224k ` +
+    `-f mpeg ` +
+    `"${outputPath}"`;
+
+  console.log(cmd);
+
+  execSync(cmd, { stdio: "inherit" });
 });
 
 console.log("Conversion completed.");
